@@ -1,13 +1,16 @@
-#include <stdio.h>   // stderr
-#include <stdlib.h>  // exit
-#include <unistd.h>  // close
-#include <errno.h>   // errno
-#include <string.h>  // strerror
-#include <unistd.h>  // fileno
-#include <pthread.h> // pthread
+#include <stdio.h>        // stderr
+#include <stdlib.h>       // exit
+#include <unistd.h>       // close
+#include <errno.h>        // errno
+#include <string.h>       // strerror
+#include <unistd.h>       // fileno
+#include <pthread.h>      // pthread
+#include <pulse/simple.h> // pulseaudio
+#include <pulse/error.h>  // pulseaudio
 #include "net.h"
 
 #define N 128
+#define APP_NAME "phone"
 
 int exchange_voice(int sock);
 void *send_voice(void *arg);
@@ -111,52 +114,38 @@ void *send_voice(void *arg)
     int net = *(int *)arg;
 
     char data[N + 1];
-    int n;
+    // int n;
 
-    /*int rec_pipe[2];
-    ret = pipe(rec_pipe);
-    if (ret == -1)
+    pa_sample_spec ss;
+    ss.format = PA_SAMPLE_S16LE;
+    ss.rate = 44100;
+    ss.channels = 1;
+
+    int pa_errno;
+    pa_simple *pa = pa_simple_new(NULL, APP_NAME, PA_STREAM_RECORD, NULL, "record", &ss, NULL, NULL, &pa_errno);
+    if (pa == NULL)
     {
-        fprintf(stderr, "ERROR: Failed to create pipe for rec: %s\n", strerror(errno));
+        fprintf(stderr, "ERROR: Failed to connect pulseaudio server for record: %s\n", pa_strerror(pa_errno));
         pthread_exit(NULL);
     }
-    pid_t rec_pid = fork();
-    if (rec_pid == -1)
-    {
-        fprintf(stderr, "ERROR: Failed to fork this process for rec\n");
-        pthread_exit(NULL);
-    }
-    else if (rec_pid == 0)
-    {
-        // Child process
-        close(rec_pipe[0]);               // the read end of rec_pipe is unnecessary for child process
-        dup2(rec_pipe[1], STDOUT_FILENO); // Stdout of child process as the write end of rec_pipe
-        // Exec rec command
-        ret = execl("/usr/bin/rec", "-t", "raw", "-b", "16", "-c", "1", "-e", "s", "-r", "44100", "-", (char *)NULL);
-        if (ret == -1)
-        {
-            fprintf(stderr, "ERROR: Failed to execute record command: %s\n", strerror(errno));
-            pthread_exit(NULL);
-        }
-    }
-    else
-    {
-        // Parent process
-        close(rec_pipe[1]); // the write end of rec_pipe is unnecessary for parent process
-    }*/
 
-    FILE *rec = popen("rec -t raw -b 16 -c 1 -e s -r 44100 -", "r");
+    // FILE *rec = popen("rec -t raw -b 16 -c 1 -e s -r 44100 -", "r");
 
     while (1)
     {
-        // n = read(rec_pipe[0], data, N);
-        n = fread(data, sizeof(char), N, rec);
+        /** int n = fread(data, sizeof(char), N, rec);
         if (n <= 0)
         {
             fprintf(stderr, "ERROR: Failed to read data from record process\n");
             pthread_exit(NULL);
+        } //*/
+        ret = pa_simple_read(pa, data, N, &pa_errno);
+        if (ret < 0)
+        {
+            fprintf(stderr, "ERROR: Failed to read data from pulseaudio: %s\n", pa_strerror(pa_errno));
+            pthread_exit(NULL);
         }
-        if (send(net, data, n, 0) < n)
+        if (send(net, data, N, 0) < N)
         {
             fprintf(stderr, "ERROR: Failed to send all data to internet\n");
             pthread_exit(NULL);
@@ -164,7 +153,8 @@ void *send_voice(void *arg)
         pthread_testcancel();
     }
 
-    pclose(rec);
+    // pclose(rec);
+    pa_simple_free(pa);
     pthread_exit(NULL);
 }
 
@@ -175,58 +165,46 @@ void *receive_voice(void *arg)
     int net = *(int *)arg;
 
     char data[N + 1];
-    int n;
+    // int n;
 
-    /*int play_pipe[2];
-    ret = pipe(play_pipe);
-    if (ret == -1)
+    pa_sample_spec ss;
+    ss.format = PA_SAMPLE_S16LE;
+    ss.rate = 44100;
+    ss.channels = 1;
+
+    int pa_errno;
+    pa_simple *pa = pa_simple_new(NULL, APP_NAME, PA_STREAM_PLAYBACK, NULL, "play", &ss, NULL, NULL, &pa_errno);
+    if (pa == NULL)
     {
-        fprintf(stderr, "ERROR: Failed to create pipe for play: %s\n", strerror(errno));
+        fprintf(stderr, "ERROR: Failed to connect pulseaudio server for play: %s\n", pa_strerror(pa_errno));
         pthread_exit(NULL);
     }
-    pid_t play_pid = fork();
-    if (play_pid == -1)
-    {
-        fprintf(stderr, "ERROR: Failed to fork this process for play\n");
-        pthread_exit(NULL);
-    }
-    else if (play_pid == 0)
-    {
-        // Child process
-        close(play_pipe[1]);              // the write end of rec_pipe is unnecessary for child process
-        dup2(play_pipe[0], STDIN_FILENO); // Stdout of child process as the read end of rec_pipe
-        // Exec rec command
-        ret = execl("/usr/bin/play", "-t", "raw", "-b", "16", "-c", "1", "-e", "s", "-r", "44100", "-", (char *)NULL);
-        if (ret == -1)
-        {
-            fprintf(stderr, "ERROR: Failed to execute play command: %s\n", strerror(errno));
-            pthread_exit(NULL);
-        }
-    }
-    else
-    {
-        // Parent process
-        close(play_pipe[0]); // the write end of rec_pipe is unnecessary for parent process
-    }*/
 
-    FILE *play = popen("play -t raw -b 16 -c 1 -e s -r 44100 -", "w");
+    // FILE *play = popen("play -t raw -b 16 -c 1 -e s -r 44100 -", "w");
 
     while (1)
     {
-        n = recv(net, data, N, 0);
+        int n = recv(net, data, N, 0);
         if (n <= 0)
         {
             fprintf(stderr, "ERROR: Failed to receive data from internet\n");
             pthread_exit(NULL);
         }
-        // if (write(play_pipe[1], data, n) < n)
-        if (fwrite(data, sizeof(char), n, play) < n)
+        ret = pa_simple_write(pa, data, n, &pa_errno);
+        if (ret < 0)
+        {
+            fprintf(stderr, "ERROR: Failed to write data to pulseaudio: %s\n", pa_strerror(pa_errno));
+            pthread_exit(NULL);
+        }
+        /* if (fwrite(data, sizeof(char), n, play) < n)
         {
             fprintf(stderr, "ERROR: Failed to write all data to play process\n");
             pthread_exit(NULL);
         }
+        */
         pthread_testcancel();
     }
 
+    pa_simple_free(pa);
     pthread_exit(NULL);
 }

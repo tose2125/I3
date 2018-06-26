@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall
-LDLIBS = -lpthread
+LDLIBS = -pthread -lpulse -lpulse-simple
 TARGET = phone
 
 all: $(TARGET)
