@@ -42,7 +42,7 @@ int main(int argc, char *argv[])
         ret = close(sock); // Close the socket
         if (ret == -1)
         {
-            fprintf(stderr, "ERROR: Cannot close the socket: %s\n", strerror(errno));
+            fprintf(stderr, "ERROR: Failed to close the socket: %s\n", strerror(errno));
             return EXIT_FAILURE;
         }
         return EXIT_SUCCESS;
@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
         ret = close(sock); // Close the socket
         if (ret == -1)
         {
-            fprintf(stderr, "ERROR: Cannot close the socket: %s\n", strerror(errno));
+            fprintf(stderr, "ERROR: Failed to close the socket: %s\n", strerror(errno));
             return EXIT_FAILURE;
         }
         return EXIT_SUCCESS;
@@ -153,12 +153,12 @@ void *send_voice(void *arg)
         n = fread(data, sizeof(char), N, rec);
         if (n <= 0)
         {
-            fprintf(stderr, "ERROR: Cannot read data from record process\n");
+            fprintf(stderr, "ERROR: Failed to read data from record process\n");
             pthread_exit(NULL);
         }
         if (send(net, data, n, 0) < n)
         {
-            fprintf(stderr, "ERROR: Cannot send all data to internet\n");
+            fprintf(stderr, "ERROR: Failed to send all data to internet\n");
             pthread_exit(NULL);
         }
         pthread_testcancel();
@@ -216,13 +216,13 @@ void *receive_voice(void *arg)
         n = recv(net, data, N, 0);
         if (n <= 0)
         {
-            fprintf(stderr, "ERROR: Cannot receive data from internet\n");
+            fprintf(stderr, "ERROR: Failed to receive data from internet\n");
             pthread_exit(NULL);
         }
         // if (write(play_pipe[1], data, n) < n)
         if (fwrite(data, sizeof(char), n, play) < n)
         {
-            fprintf(stderr, "ERROR: Cannot write all data to play process\n");
+            fprintf(stderr, "ERROR: Failed to write all data to play process\n");
             pthread_exit(NULL);
         }
         pthread_testcancel();
