@@ -1,6 +1,6 @@
 CC = gcc
 CFLAGS = -Wall
-LDLIBS = -pthread
+LDLIBS = -pthread -lopus
 TARGET = phone phone_pa
 
 all: $(TARGET)
