@@ -5,8 +5,9 @@
 #include <pthread.h>    // pthread
 #include <sys/types.h>  // send, recv
 #include <sys/socket.h> // send, recv
+#include <opus/opus.h>  // opus
 
-#define N 1024
+#define N 4096
 #define APP_NAME "phone"
 
 void *send_voice(void *arg);
