@@ -7,6 +7,7 @@ void *send_voice(void *arg)
     int ret;
 
     int net = *(int *)arg;
+    setsockopt(net, IPPROTO_TCP, TCP_NODELAY, NULL, sizeof(NULL));
 
     int opus_errno;
     OpusEncoder *opus = opus_encoder_create(48000, 1, OPUS_APPLICATION_VOIP, &opus_errno);
@@ -115,7 +116,7 @@ void *receive_voice(void *arg)
             break;
         }
         n = recv(net, in_opus_data, len, 0);
-        if (n <= 0)
+        if (n < len)
         {
             fprintf(stderr, "ERROR: Failed to receive data from internet\n");
             break;
