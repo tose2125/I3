@@ -8,10 +8,11 @@ void *send_voice(void *arg)
 
     int net = *(int *)arg;
 
-    OpusEncoder *opus = opus_encoder_create(48000, 1, OPUS_APPLICATION_AUDIO, &ret);
+    int opus_errno;
+    OpusEncoder *opus = opus_encoder_create(48000, 1, OPUS_APPLICATION_VOIP, &opus_errno);
     if (opus == NULL)
     {
-        fprintf(stderr, "ERROR: Failed to start opus encoder: %s\n", opus_strerror(ret));
+        fprintf(stderr, "ERROR: Failed to start opus encoder: %s\n", opus_strerror(opus_errno));
         pthread_exit(NULL);
     }
 
@@ -25,40 +26,48 @@ void *send_voice(void *arg)
     if (pa == NULL)
     {
         fprintf(stderr, "ERROR: Failed to connect pulseaudio server for record: %s\n", pa_strerror(pa_errno));
+        opus_encoder_destroy(opus);
         pthread_exit(NULL);
     }
 
-    char pcm_data[N + 1] = {0};
-    unsigned char opus_data[N + 1] = {0};
+    unsigned char in_pcm_data[2 * N + 1] = {0};
+    opus_int16 pcm_data[N + 1] = {0};
+    unsigned char out_opus_data[N + 1] = {0};
 
     while (1)
     {
-        ret = pa_simple_read(pa, pcm_data, 1920, &pa_errno);
+        ret = pa_simple_read(pa, in_pcm_data, 1920, &pa_errno); // 20ms
         if (ret < 0)
         {
             fprintf(stderr, "ERROR: Failed to read data from pulseaudio: %s\n", pa_strerror(pa_errno));
-            pthread_exit(NULL);
+            break;
         }
-        int n = opus_encode(opus, (opus_int16 *)pcm_data, 960, opus_data, N);
+        for (int i = 0; i < 960; i++)
+        {
+            pcm_data[i] = in_pcm_data[i * 2] | in_pcm_data[i * 2 + 1] << 8;
+        }
+        int n = opus_encode(opus, pcm_data, 960, out_opus_data, N);
         if (n < 0)
         {
             fprintf(stderr, "ERROR: Failed to encode: %s\n", opus_strerror(n));
-            pthread_exit(NULL);
+            break;
         }
         else if (n <= 2)
         {
             continue;
         }
-        if (send(net, opus_data, n, 0) < n)
+        if (send(net, out_opus_data, n, 0) < n)
         {
             fprintf(stderr, "ERROR: Failed to send all data to internet\n");
-            pthread_exit(NULL);
+            break;
         }
         pthread_testcancel();
     }
 
     pa_simple_free(pa);
     opus_encoder_destroy(opus);
+
+    fprintf(stderr, "INFO: Stopped sending voice\n");
     pthread_exit(NULL);
 }
 
@@ -68,10 +77,11 @@ void *receive_voice(void *arg)
 
     int net = *(int *)arg;
 
-    OpusDecoder *opus = opus_decoder_create(48000, 1, &ret);
+    int opus_errno;
+    OpusDecoder *opus = opus_decoder_create(48000, 1, &opus_errno);
     if (opus == NULL)
     {
-        fprintf(stderr, "ERROR: Failed to start opus decoder: %s\n", opus_strerror(ret));
+        fprintf(stderr, "ERROR: Failed to start opus decoder: %s\n", opus_strerror(opus_errno));
         pthread_exit(NULL);
     }
 
@@ -85,36 +95,45 @@ void *receive_voice(void *arg)
     if (pa == NULL)
     {
         fprintf(stderr, "ERROR: Failed to connect pulseaudio server for play: %s\n", pa_strerror(pa_errno));
+        opus_decoder_destroy(opus);
         pthread_exit(NULL);
     }
 
-    char pcm_data[N + 1] = {0};
-    unsigned char opus_data[N + 1] = {0};
+    unsigned char in_opus_data[N + 1] = {0};
+    opus_int16 pcm_data[N + 1] = {0};
+    unsigned char out_pcm_data[2 * N + 1] = {0};
 
     while (1)
     {
-        int n = recv(net, opus_data, N, 0);
+        int n = recv(net, in_opus_data, N, 0);
         if (n <= 0)
         {
             fprintf(stderr, "ERROR: Failed to receive data from internet\n");
-            pthread_exit(NULL);
+            break;
         }
-        n = opus_decode(opus, opus_data, n, (opus_int16 *)pcm_data, N / 2, 0);
+        n = opus_decode(opus, in_opus_data, n, pcm_data, N, 0);
         if (n <= 0)
         {
             fprintf(stderr, "ERROR: Failed to decode: %s\n", opus_strerror(n));
-            pthread_exit(NULL);
+            break;
         }
-        ret = pa_simple_write(pa, pcm_data, n, &pa_errno);
+        for (int i = 0; i < n; i++)
+        {
+            out_pcm_data[i * 2] = pcm_data[i] & 0xFF;
+            out_pcm_data[i * 2 + 1] = (pcm_data[i] >> 8) & 0xFF;
+        }
+        ret = pa_simple_write(pa, out_pcm_data, 2 * n, &pa_errno);
         if (ret < 0)
         {
             fprintf(stderr, "ERROR: Failed to write data to pulseaudio: %s\n", pa_strerror(pa_errno));
-            pthread_exit(NULL);
+            break;
         }
         pthread_testcancel();
     }
 
     pa_simple_free(pa);
     opus_decoder_destroy(opus);
+
+    fprintf(stderr, "INFO: Stopped receiving voice\n");
     pthread_exit(NULL);
 }
