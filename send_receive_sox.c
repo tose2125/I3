@@ -93,17 +93,25 @@ void *receive_voice(void *arg)
     while (1)
     {
         int n = recv(net, in_opus_data, 2, 0);
+        if (n < 2)
+        {
+            fprintf(stderr, "ERROR: Failed to receive data from internet: %d / 2\n", n);
+            break;
+        }
         size_t len = in_opus_data[0] | in_opus_data[1] << 8;
         if (len > N)
         {
             fprintf(stderr, "ERROR: Incoming data longer than buffer: %d\n", (unsigned short)len);
             break;
         }
-        n = recv(net, in_opus_data, len, 0);
-        if (n < len)
+        for (int i = 0; i < len; i += n)
         {
-            fprintf(stderr, "ERROR: Failed to receive data from internet\n");
-            break;
+            n = recv(net, in_opus_data + i, len - i, 0);
+            if (n <= 0)
+            {
+                fprintf(stderr, "ERROR: Failed to receive data from internet: %d byte / %zu byte\n", n, len - i);
+                break;
+            }
         }
         n = opus_decode(opus, in_opus_data, n, pcm_data, N, 0);
         if (n <= 0)
