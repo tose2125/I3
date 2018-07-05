@@ -46,7 +46,7 @@ void *send_voice(void *arg)
         {
             pcm_data[i] = in_pcm_data[i * 2] | in_pcm_data[i * 2 + 1] << 8;
         }
-        int n = opus_encode(opus, pcm_data, 960, out_opus_data, N);
+        int n = opus_encode(opus, pcm_data, 960, &out_opus_data[2], N - 2);
         if (n < 0)
         {
             fprintf(stderr, "ERROR: Failed to encode: %s\n", opus_strerror(n));
@@ -56,7 +56,9 @@ void *send_voice(void *arg)
         {
             continue;
         }
-        if (send(net, out_opus_data, n, 0) < n)
+        out_opus_data[0] = n & 0xFF;        // data length
+        out_opus_data[1] = (n >> 8) & 0xFF; // little endian
+        if (send(net, out_opus_data, n + 2, 0) < n + 2)
         {
             fprintf(stderr, "ERROR: Failed to send all data to internet\n");
             break;
@@ -105,7 +107,14 @@ void *receive_voice(void *arg)
 
     while (1)
     {
-        int n = recv(net, in_opus_data, N, 0);
+        int n = recv(net, in_opus_data, 2, 0);
+        size_t len = in_opus_data[0] | in_opus_data[1] << 8;
+        if (len > N)
+        {
+            fprintf(stderr, "ERROR: Incoming data longer than buffer: %d\n", (unsigned short)len);
+            break;
+        }
+        n = recv(net, in_opus_data, len, 0);
         if (n <= 0)
         {
             fprintf(stderr, "ERROR: Failed to receive data from internet\n");
