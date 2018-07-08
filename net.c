@@ -34,12 +34,12 @@ int parse_optarg_client(int argc, char *argv[], in_addr_t *dst_addr, in_port_t *
     return ret;
 }
 
-int parse_optarg_server(int argc, char *argv[], in_addr_t *srv_addr, in_port_t *srv_port, int *lsn_limit)
+int parse_optarg_server(int argc, char *argv[], in_addr_t *srv_addr, in_port_t *srv_port_ctrl, in_port_t *srv_port_voip)
 {
     int ret = 0; // Success or failure to return value
 
     int opt;
-    while ((opt = getopt(argc, argv, "a:p:c:")) != -1)
+    while ((opt = getopt(argc, argv, "a:c:v:l:")) != -1)
     {
         switch (opt)
         {
@@ -50,25 +50,26 @@ int parse_optarg_server(int argc, char *argv[], in_addr_t *srv_addr, in_port_t *
                 ret = 1;
             }
             break;
-        case 'p':
+        case 'c':
             errno = 0;
-            *srv_port = htons(strtoul(optarg, NULL, 10));
+            *srv_port_ctrl = htons(strtoul(optarg, NULL, 10));
             if (errno == ERANGE)
             {
                 fprintf(stderr, "ERROR: Failed to convert port number: %s\n", optarg);
                 ret = 1;
             }
             break;
-        case 'c':
-            *lsn_limit = strtol(optarg, NULL, 10);
+        case 'v':
+            errno = 0;
+            *srv_port_voip = htons(strtoul(optarg, NULL, 10));
             if (errno == ERANGE)
             {
-                fprintf(stderr, "ERROR: The number of clients conversino failed: %s\n", optarg);
+                fprintf(stderr, "ERROR: Failed to convert port number: %s\n", optarg);
                 ret = 1;
             }
             break;
         default:
-            fprintf(stderr, "Usage: %s -a srv_addr -p srv_port -c src_clients\n", argv[0]);
+            fprintf(stderr, "Usage: %s -a srv_addr -c srv_port_ctrl -v srv_port_voip\n", argv[0]);
             ret = 1;
         }
     }
@@ -129,7 +130,7 @@ int connect_udp_client(in_addr_t *dst_addr, in_port_t *dst_port)
     addr.sin_addr.s_addr = *dst_addr; // Destination IP address
     addr.sin_port = *dst_port;        // Destination Port number
 
-    char data = UDP_EOD;
+    char data = '\n';
     ret = sendto(sock, &data, 1, 0, (struct sockaddr *)&addr, sizeof(addr)); // Connect to destination
     if (ret < 1)
     {
@@ -140,7 +141,7 @@ int connect_udp_client(in_addr_t *dst_addr, in_port_t *dst_port)
     return sock;
 }
 
-int listen_tcp_server(in_addr_t *srv_addr, in_port_t *srv_port, int lsn_limit)
+int listen_tcp_server(in_addr_t *srv_addr, in_port_t *srv_port)
 {
     int ret; // Success or failure returned value
 
@@ -163,7 +164,7 @@ int listen_tcp_server(in_addr_t *srv_addr, in_port_t *srv_port, int lsn_limit)
         return -1;
     }
 
-    ret = listen(sock, lsn_limit); // Listen to socket
+    ret = listen(sock, LISTEN_LIMIT); // Listen to socket
     if (ret == -1)
     {
         fprintf(stderr, "ERROR: Failed to listen to port %d: %s\n", ntohs(*srv_port), strerror(errno));
@@ -222,4 +223,46 @@ int handle_tcp_server(int srv_sock, int handler(int))
     }
 
     return EXIT_SUCCESS;
+}
+
+int listen_udp_server(in_addr_t *srv_addr, in_port_t *srv_port)
+{
+    int ret; // Success or failure returned value
+
+    int sock = socket(PF_INET, SOCK_DGRAM, 0); // UDP socket
+    if (sock == -1)
+    {
+        fprintf(stderr, "ERROR: Failed to create a socket: %s\n", strerror(errno));
+        return -1;
+    }
+
+    struct sockaddr_in addr;          // IPv4 address & port
+    addr.sin_family = AF_INET;        // Mode IPv4
+    addr.sin_addr.s_addr = *srv_addr; // Server IP address
+    addr.sin_port = *srv_port;        // Server Port number
+
+    ret = bind(sock, (struct sockaddr *)&addr, sizeof(addr)); // Bind to socket
+    if (ret == -1)
+    {
+        fprintf(stderr, "ERROR: Failed to bind port %d: %s\n", ntohs(*srv_port), strerror(errno));
+        return -1;
+    }
+
+    /*
+    ret = listen(sock, lsn_limit); // Listen to socket
+    if (ret == -1)
+    {
+        fprintf(stderr, "ERROR: Failed to listen to port %d: %s\n", ntohs(*srv_port), strerror(errno));
+        return -1;
+    }
+    */
+
+    struct sockaddr_in lsn_addr;
+    socklen_t lsn_addr_len = sizeof(lsn_addr);
+    if (getsockname(sock, (struct sockaddr *)&lsn_addr, &lsn_addr_len) == 0)
+    {
+        fprintf(stdout, "INFO: Listening to port %d\n", ntohs(lsn_addr.sin_port));
+    }
+
+    return sock;
 }
