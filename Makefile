@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall
+CFLAGS = -Wall -g
 LDLIBS = -pthread -lopus
 TARGET = phone phone_pa
 
@@ -16,6 +16,7 @@ test/opus_encode: test/opus_encode.o
 test/opus_decode: test/opus_decode.o
 	$(CC) -o $@ $^ $(LDLIBS)
 test/epoll: test/epoll.o
+	$(CC) -o $@ $^ $(LDLIBS)
 
 .PHONY: clean tmpclean
 tmpclean:
