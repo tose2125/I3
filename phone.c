@@ -119,7 +119,9 @@ int main(int argc, char *argv[])
     }
 
     // voip socket only client
-    int cln_sock_voip = 0;
+    struct send_receive cln_voip = {0};
+    cln_voip.print = calloc(sizeof(int), 1);
+    pthread_mutex_init(&cln_voip.locker, NULL);
 
     // Prepare main loop
     char read_data[N];
@@ -278,10 +280,16 @@ int main(int argc, char *argv[])
                             pthread_cancel(receive_tid);
                             pthread_join(send_tid, NULL);
                             pthread_join(receive_tid, NULL);
-                            close(cln_sock_voip);
+                            close(cln_voip.sock);
                         }
                         memset(&connection, 0, sizeof(connection));
                         printf("INFO: Successfully closed the connection\n");
+                    }
+                    else if (strcmp(command, "counter") == 0)
+                    {
+                        pthread_mutex_lock(&cln_voip.locker);
+                        *cln_voip.print = 3;
+                        pthread_mutex_unlock(&cln_voip.locker);
                     }
                     else if (strcmp(command, "exit") == 0)
                     {
@@ -357,19 +365,22 @@ int main(int argc, char *argv[])
                         connection.dst_port_voip = htons(strtoul(arg, NULL, 10));
                         // Start voip
                         printf("INFO: Remote accepted, now start voip\n");
-                        cln_sock_voip = connect_tcp_client(&connection.dst_addr, &connection.dst_port_voip);
-                        if (cln_sock_voip == -1)
+                        pthread_mutex_lock(&cln_voip.locker);
+                        cln_voip.sock = connect_tcp_client(&connection.dst_addr, &connection.dst_port_voip);
+                        if (cln_voip.sock == -1)
                         {
                             fprintf(stderr, "ERROR: Failed to connect remote voip server\n");
                             continue;
                         }
+                        pthread_mutex_unlock(&cln_voip.locker);
                         // Start threads
-                        ret = pthread_create(&send_tid, NULL, send_voice, &cln_sock_voip);
+
+                        ret = pthread_create(&send_tid, NULL, send_voice, &cln_voip);
                         if (ret != 0)
                         {
                             fprintf(stderr, "ERROR: Failed to start thread for send: %s\n", strerror(errno));
                         }
-                        ret = pthread_create(&receive_tid, NULL, receive_voice, &cln_sock_voip);
+                        ret = pthread_create(&receive_tid, NULL, receive_voice, &cln_voip);
                         if (ret != 0)
                         {
                             fprintf(stderr, "ERROR: Failed to start thread for receive: %s\n", strerror(errno));
@@ -404,7 +415,7 @@ int main(int argc, char *argv[])
                         pthread_cancel(receive_tid);
                         pthread_join(send_tid, NULL);
                         pthread_join(receive_tid, NULL);
-                        close(cln_sock_voip);
+                        close(cln_voip.sock);
                         printf("INFO: Successfully closed the connection by remote request\n");
                     }
                     else
@@ -416,12 +427,14 @@ int main(int argc, char *argv[])
             else if (current_events[i].data.fd == srv_sock_voip)
             {
                 // Voip server
-                cln_sock_voip = accept(srv_sock_voip, (struct sockaddr *)&dst_addr, &dst_addr_len);
-                if (cln_sock_voip == -1)
+                pthread_mutex_lock(&cln_voip.locker);
+                cln_voip.sock = accept(srv_sock_voip, (struct sockaddr *)&dst_addr, &dst_addr_len);
+                if (cln_voip.sock == -1)
                 {
                     fprintf(stderr, "ERROR: Failed to accept access from client: %s\n", strerror(errno));
                     return EXIT_FAILURE;
                 }
+                pthread_mutex_unlock(&cln_voip.locker);
                 // Catch access from voip client
                 if (connection.is_client != 0 || connection.is_server != 1 || connection.dst_addr != dst_addr.sin_addr.s_addr)
                 {
@@ -431,12 +444,12 @@ int main(int argc, char *argv[])
                 connection.is_client = 2;
                 printf("INFO: Received from client, now start voip\n");
                 // Start threads
-                ret = pthread_create(&send_tid, NULL, send_voice, &cln_sock_voip);
+                ret = pthread_create(&send_tid, NULL, send_voice, &cln_voip);
                 if (ret != 0)
                 {
                     fprintf(stderr, "ERROR: Failed to start thread for send: %s\n", strerror(errno));
                 }
-                ret = pthread_create(&receive_tid, NULL, receive_voice, &cln_sock_voip);
+                ret = pthread_create(&receive_tid, NULL, receive_voice, &cln_voip);
                 if (ret != 0)
                 {
                     fprintf(stderr, "ERROR: Failed to start thread for receive: %s\n", strerror(errno));
