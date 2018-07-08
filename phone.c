@@ -122,7 +122,8 @@ int main(int argc, char *argv[])
     int cln_sock_voip = 0;
 
     // Prepare main loop
-    char data[N];
+    char read_data[N];
+    char send_data[N];
     struct sockaddr_in dst_addr;
     socklen_t dst_addr_len = sizeof(dst_addr);
 
@@ -136,24 +137,25 @@ int main(int argc, char *argv[])
         for (int i = 0; i < available_events; i++)
         {
             // Handle each file descriptor
-            memset(data, 0, N);
+            memset(read_data, 0, N);
+            memset(send_data, 0, N);
             memset(&dst_addr, 0, sizeof(dst_addr));
             if (current_events[i].data.fd == STDIN_FILENO)
             {
                 // Stdin
-                int n = read(current_events[i].data.fd, data, N - 1);
+                int n = read(current_events[i].data.fd, read_data, N - 1);
                 if (n <= 0)
                 {
                     fprintf(stderr, "ERROR: Failed to read data from stdin\n");
                     return EXIT_FAILURE;
                 }
                 // Analyze written string
-                char *statement, *statement_save;
-                for (statement = strtok_r(data, "\n", &statement_save); statement != NULL; statement = strtok_r(NULL, "\n", &statement_save))
+                char *statement, *statement_save = NULL;
+                for (statement = strtok_r(read_data, "\n", &statement_save); statement != NULL; statement = strtok_r(NULL, "\n", &statement_save))
                 {
-                    char tmp_data[N];
+                    char *tmp_data = calloc(sizeof(char), strlen(statement) + 1);
                     strcpy(tmp_data, statement);
-                    char *command, *command_save, *arg;
+                    char *command, *command_save = NULL, *arg;
                     command = strtok_r(tmp_data, " ", &command_save);
                     if (command == NULL)
                     {
@@ -196,9 +198,9 @@ int main(int argc, char *argv[])
                         }
                         connection.dst_port_ctrl = dst_addr.sin_port;
                         // Send voip request
-                        sprintf(data, "call %s\n", name);
-                        ret = sendto(srv_sock_ctrl, data, strlen(data), 0, (struct sockaddr *)&dst_addr, dst_addr_len);
-                        if (ret < strlen(data))
+                        sprintf(send_data, "call %s\n", name);
+                        ret = sendto(srv_sock_ctrl, send_data, strlen(send_data), 0, (struct sockaddr *)&dst_addr, dst_addr_len);
+                        if (ret < strlen(send_data))
                         {
                             fprintf(stderr, "ERROR: Failed to send all data to remote: %s\n", strerror(errno));
                             continue;
@@ -217,14 +219,38 @@ int main(int argc, char *argv[])
                         dst_addr.sin_addr.s_addr = connection.dst_addr;
                         dst_addr.sin_port = connection.dst_port_ctrl;
                         // Send voip request
-                        sprintf(data, "start %d\n", ntohs(srv_port_voip));
-                        ret = sendto(srv_sock_ctrl, data, strlen(data), 0, (struct sockaddr *)&dst_addr, dst_addr_len);
-                        if (ret < strlen(data))
+                        sprintf(send_data, "start %d\n", ntohs(srv_port_voip));
+                        ret = sendto(srv_sock_ctrl, send_data, strlen(send_data), 0, (struct sockaddr *)&dst_addr, dst_addr_len);
+                        if (ret < strlen(send_data))
                         {
                             fprintf(stderr, "ERROR: Failed to send all data to remote: %s\n", strerror(errno));
                             break;
                         }
                         printf("INFO: Successfully sent your start response\n");
+                    }
+                    else if (strcmp(command, "msg") == 0)
+                    {
+                        if (connection.is_client != 2 && connection.is_server != 2)
+                        {
+                            fprintf(stderr, "INFO: Not have any connection\n");
+                            continue;
+                        }
+                        // Send message
+                        dst_addr.sin_family = AF_INET;
+                        dst_addr.sin_addr.s_addr = connection.dst_addr;
+                        dst_addr.sin_port = connection.dst_port_ctrl;
+                        if ((arg = strtok_r(NULL, "", &command_save)) == NULL)
+                        {
+                            fprintf(stderr, "ERROR: Usage: msg content\n");
+                            continue;
+                        }
+                        sprintf(send_data, "message %s\n", arg);
+                        ret = sendto(srv_sock_ctrl, send_data, strlen(send_data), 0, (struct sockaddr *)&dst_addr, dst_addr_len);
+                        if (ret < strlen(send_data))
+                        {
+                            fprintf(stderr, "ERROR: Failed to send all data to remote: %s\n", strerror(errno));
+                            continue;
+                        }
                     }
                     else if (strcmp(command, "stop") == 0)
                     {
@@ -240,9 +266,9 @@ int main(int argc, char *argv[])
                             dst_addr.sin_family = AF_INET;
                             dst_addr.sin_addr.s_addr = connection.dst_addr;
                             dst_addr.sin_port = connection.dst_port_ctrl;
-                            sprintf(data, "stop\n");
-                            ret = sendto(srv_sock_ctrl, data, strlen(data), 0, (struct sockaddr *)&dst_addr, dst_addr_len);
-                            if (ret < strlen(data))
+                            sprintf(send_data, "stop\n");
+                            ret = sendto(srv_sock_ctrl, send_data, strlen(send_data), 0, (struct sockaddr *)&dst_addr, dst_addr_len);
+                            if (ret < strlen(send_data))
                             {
                                 fprintf(stderr, "ERROR: Failed to send all data to remote: %s\n", strerror(errno));
                                 continue;
@@ -271,19 +297,19 @@ int main(int argc, char *argv[])
             else if (current_events[i].data.fd == srv_sock_ctrl)
             {
                 // Control server
-                int n = recvfrom(current_events[i].data.fd, data, N - 1, 0, (struct sockaddr *)&dst_addr, &dst_addr_len);
+                int n = recvfrom(current_events[i].data.fd, read_data, N - 1, 0, (struct sockaddr *)&dst_addr, &dst_addr_len);
                 if (n <= 0)
                 {
                     fprintf(stderr, "ERROR: Failed to read data from stdin\n");
                     continue;
                 }
                 // Analyze received string
-                char *statement, *statement_save;
-                for (statement = strtok_r(data, "\n", &statement_save); statement != NULL; statement = strtok_r(NULL, "\n", &statement_save))
+                char *statement, *statement_save = NULL;
+                for (statement = strtok_r(read_data, "\n", &statement_save); statement != NULL; statement = strtok_r(NULL, "\n", &statement_save))
                 {
-                    char tmp_data[N];
+                    char *tmp_data = calloc(sizeof(char), strlen(statement) + 1);
                     strcpy(tmp_data, statement);
-                    char *command, *command_save, *arg;
+                    char *command, *command_save = NULL, *arg;
                     command = strtok_r(tmp_data, " ", &command_save);
                     if (command == NULL)
                     {
@@ -348,6 +374,21 @@ int main(int argc, char *argv[])
                         {
                             fprintf(stderr, "ERROR: Failed to start thread for receive: %s\n", strerror(errno));
                         }
+                    }
+                    else if (strcmp(command, "message") == 0)
+                    {
+                        // Stop current voip connection
+                        if ((connection.is_client != 2 && connection.is_server != 2) || connection.dst_addr != dst_addr.sin_addr.s_addr || connection.dst_port_ctrl != dst_addr.sin_port)
+                        {
+                            fprintf(stderr, "INFO: Received invalid message command\n");
+                            continue;
+                        }
+                        // Show message
+                        if ((arg = strtok_r(NULL, "", &command_save)) == NULL)
+                        {
+                            fprintf(stderr, "ERROR: Received no content message\n");
+                        }
+                        printf("INFO: Received message: %s\n", arg);
                     }
                     else if (strcmp(command, "stop") == 0)
                     {
