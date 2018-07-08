@@ -67,11 +67,13 @@ void *send_voice(void *arg)
             break;
         }
         // Print counter
-        if (*settings.print & 1)
+        if (pthread_mutex_trylock(&settings.locker) == 0)
         {
-            printf("INFO: Send counter: %ld\n", c);
-            pthread_mutex_lock(&settings.locker);
-            *settings.print -= 1;
+            if (*settings.print & 1)
+            {
+                printf("INFO: Send counter: %ld\n", c);
+                *settings.print -= 1;
+            }
             pthread_mutex_unlock(&settings.locker);
         }
         pthread_testcancel();
@@ -159,11 +161,13 @@ void *receive_voice(void *arg)
             break;
         }
         // Print counter
-        if (*settings.print & 2)
+        if (pthread_mutex_trylock(&settings.locker) == 0)
         {
-            printf("INFO: Receive counter: %ld\n", c);
-            pthread_mutex_lock(&settings.locker);
-            *settings.print -= 2;
+            if (*settings.print & 2)
+            {
+                printf("INFO: Receive counter: %ld\n", c);
+                *settings.print -= 2;
+            }
             pthread_mutex_unlock(&settings.locker);
         }
         pthread_testcancel();
