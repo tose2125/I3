@@ -2,7 +2,8 @@
 
 void *send_voice(void *arg)
 {
-    int net = *(int *)arg;
+    struct send_receive settings = *(struct send_receive *)arg;
+    int net = settings.sock;
     setsockopt(net, IPPROTO_TCP, TCP_NODELAY, NULL, sizeof(NULL));
 
     int opus_errno;
@@ -67,7 +68,8 @@ void *send_voice(void *arg)
 
 void *receive_voice(void *arg)
 {
-    int net = *(int *)arg;
+    struct send_receive settings = *(struct send_receive *)arg;
+    int net = settings.sock;
 
     int opus_errno;
     OpusDecoder *opus = opus_decoder_create(48000, 1, &opus_errno);

@@ -6,7 +6,8 @@ void *send_voice(void *arg)
 {
     int ret;
 
-    int net = *(int *)arg;
+    struct send_receive settings = *(struct send_receive *)arg;
+    int net = settings.sock;
     setsockopt(net, IPPROTO_TCP, TCP_NODELAY, NULL, sizeof(NULL));
 
     int opus_errno;
@@ -35,7 +36,8 @@ void *send_voice(void *arg)
     opus_int16 pcm_data[N + 1] = {0};
     unsigned char out_opus_data[N + 1] = {0};
 
-    while (1)
+    unsigned long c = 0;
+    while (++c > 0)
     {
         ret = pa_simple_read(pa, in_pcm_data, 1920, &pa_errno); // 20ms
         if (ret < 0)
@@ -64,6 +66,14 @@ void *send_voice(void *arg)
             fprintf(stderr, "ERROR: Failed to send all data to internet\n");
             break;
         }
+        // Print counter
+        if (*settings.print & 1)
+        {
+            printf("INFO: Send counter: %ld\n", c);
+            pthread_mutex_lock(&settings.locker);
+            *settings.print -= 1;
+            pthread_mutex_unlock(&settings.locker);
+        }
         pthread_testcancel();
     }
 
@@ -78,7 +88,8 @@ void *receive_voice(void *arg)
 {
     int ret;
 
-    int net = *(int *)arg;
+    struct send_receive settings = *(struct send_receive *)arg;
+    int net = settings.sock;
 
     int opus_errno;
     OpusDecoder *opus = opus_decoder_create(48000, 1, &opus_errno);
@@ -106,7 +117,8 @@ void *receive_voice(void *arg)
     opus_int16 pcm_data[N + 1] = {0};
     unsigned char out_pcm_data[2 * N + 1] = {0};
 
-    while (1)
+    unsigned long c = 0;
+    while (++c > 0)
     {
         int n = recv(net, in_opus_data, 2, 0);
         if (n < 2)
@@ -145,6 +157,14 @@ void *receive_voice(void *arg)
         {
             fprintf(stderr, "ERROR: Failed to write data to pulseaudio: %s\n", pa_strerror(pa_errno));
             break;
+        }
+        // Print counter
+        if (*settings.print & 2)
+        {
+            printf("INFO: Receive counter: %ld\n", c);
+            pthread_mutex_lock(&settings.locker);
+            *settings.print -= 2;
+            pthread_mutex_unlock(&settings.locker);
         }
         pthread_testcancel();
     }
