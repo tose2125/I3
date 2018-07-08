@@ -10,11 +10,12 @@ phone: phone.o net.o send_receive_sox.o
 phone_pa: phone.o net.o send_receive_pulseaudio.o
 	$(CC) -o $@ $^ $(LDLIBS) -lpulse -lpulse-simple
 
-test: test/opus_encode test/opus_decode
+test: test/opus_encode test/opus_decode test/epoll
 test/opus_encode: test/opus_encode.o
 	$(CC) -o $@ $^ $(LDLIBS)
 test/opus_decode: test/opus_decode.o
 	$(CC) -o $@ $^ $(LDLIBS)
+test/epoll: test/epoll.o
 
 .PHONY: clean tmpclean
 tmpclean:
