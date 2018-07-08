@@ -429,16 +429,19 @@ int main(int argc, char *argv[])
                 // Voip server
                 pthread_mutex_lock(&cln_voip.locker);
                 cln_voip.sock = accept(srv_sock_voip, (struct sockaddr *)&dst_addr, &dst_addr_len);
+                pthread_mutex_unlock(&cln_voip.locker);
                 if (cln_voip.sock == -1)
                 {
                     fprintf(stderr, "ERROR: Failed to accept access from client: %s\n", strerror(errno));
                     return EXIT_FAILURE;
                 }
-                pthread_mutex_unlock(&cln_voip.locker);
                 // Catch access from voip client
                 if (connection.is_client != 0 || connection.is_server != 1 || connection.dst_addr != dst_addr.sin_addr.s_addr)
                 {
                     fprintf(stderr, "INFO: Received invalid voip connection\n");
+                    pthread_mutex_lock(&cln_voip.locker);
+                    close(cln_voip.sock);
+                    pthread_mutex_unlock(&cln_voip.locker);
                     continue;
                 }
                 connection.is_client = 2;
