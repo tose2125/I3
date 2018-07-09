@@ -8,7 +8,7 @@ void *send_voice(void *arg)
 
     struct send_receive settings = *(struct send_receive *)arg;
     int net = settings.sock;
-    setsockopt(net, IPPROTO_TCP, TCP_NODELAY, NULL, sizeof(NULL));
+    // setsockopt(net, IPPROTO_TCP, TCP_NODELAY, NULL, sizeof(NULL));
 
     int opus_errno;
     OpusEncoder *opus = opus_encoder_create(48000, 1, OPUS_APPLICATION_VOIP, &opus_errno);
@@ -36,6 +36,7 @@ void *send_voice(void *arg)
     opus_int16 pcm_data[N + 1] = {0};
     unsigned char out_opus_data[N + 1] = {0};
 
+    unsigned long long data_counter = 0;
     unsigned long c = 0;
     while (++c > 0)
     {
@@ -66,12 +67,13 @@ void *send_voice(void *arg)
             fprintf(stderr, "ERROR: Failed to send all data to internet\n");
             break;
         }
+        data_counter += n + 2;
         // Print counter
         if (pthread_mutex_trylock(&settings.locker) == 0)
         {
             if (*settings.print & 1)
             {
-                printf("INFO: Send counter: %ld\n", c);
+                printf("INFO: Send counter: %lu times, %llu byte, compression %.2lf%%\n", c, data_counter, 100.0 * data_counter / (c * 1920));
                 *settings.print -= 1;
             }
             pthread_mutex_unlock(&settings.locker);
@@ -119,6 +121,7 @@ void *receive_voice(void *arg)
     opus_int16 pcm_data[N + 1] = {0};
     unsigned char out_pcm_data[2 * N + 1] = {0};
 
+    unsigned long long data_counter = 0;
     unsigned long c = 0;
     while (++c > 0)
     {
@@ -143,6 +146,7 @@ void *receive_voice(void *arg)
                 break;
             }
         }
+        data_counter += len + 2;
         n = opus_decode(opus, in_opus_data, n, pcm_data, N, 0);
         if (n <= 0)
         {
@@ -165,7 +169,7 @@ void *receive_voice(void *arg)
         {
             if (*settings.print & 2)
             {
-                printf("INFO: Receive counter: %ld\n", c);
+                printf("INFO: Receive counter: %lu times, %llu byte, compression %.2lf%%\n", c, data_counter, 100.0 * data_counter / (c * 1920));
                 *settings.print -= 2;
             }
             pthread_mutex_unlock(&settings.locker);
