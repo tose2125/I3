@@ -292,6 +292,10 @@ int main(int argc, char *argv[])
                         *cln_voip.print = 3;
                         pthread_mutex_unlock(&cln_voip.locker);
                     }
+                    else if (strcmp(command, "status") == 0)
+                    {
+                        printf("INFO: Status: client = %d, server = %d\n", connection.is_client, connection.is_server);
+                    }
                     else if (strcmp(command, "exit") == 0)
                     {
                         // Exit process
