@@ -1,9 +1,9 @@
 #include <stdio.h>     // stderr, fprintf
 #include <stdlib.h>    // exit, strtoul
-#include <unistd.h>    // close
+#include <unistd.h>    // close, fileno, getuid
 #include <errno.h>     // errno
 #include <string.h>    // strerror, memset, strtok_r
-#include <unistd.h>    // fileno, getlogin
+#include <pwd.h>       // getpwuid
 #include <pthread.h>   // pthread
 #include <sys/epoll.h> // epoll
 #include "net.h"
@@ -27,7 +27,8 @@ int main(int argc, char *argv[])
     int ret; // Success or failure returned value
 
     // Get current login user name
-    char *name = getlogin();
+    struct passwd *pw = getpwuid(getuid());
+    char *name = pw->pw_name;
     if (name == NULL)
     {
         fprintf(stderr, "ERROR: Failed to get current user name\n");
